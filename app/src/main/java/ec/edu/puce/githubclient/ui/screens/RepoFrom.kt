@@ -22,25 +22,41 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import ec.edu.puce.githubclient.models.Repository
+import ec.edu.puce.githubclient.models.RepositoryPayload
+import ec.edu.puce.githubclient.services.RetrofitClient
 import ec.edu.puce.githubclient.ui.theme.GithubClientTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepoFrom(
-    onBackClick: () -> Unit = {}
+    repository: Repository? = null,
+    onBackClick: () -> Unit = {},
+    onSaveSuccess: () -> Unit = {}
 ) {
-    Scaffold (
+    var name by remember { mutableStateOf(repository?.name ?: "") }
+    var description by remember { mutableStateOf(repository?.description ?: "") }
+    var isSaving by remember { mutableStateOf(false) }
+
+    Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = "Nuevo Repositorio") },
+                title = { Text(text = if (repository == null) "Nuevo Repositorio" else "Editar Repositorio") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
-
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Regresar",
                             tint = MaterialTheme.colorScheme.onPrimaryContainer
@@ -59,42 +75,67 @@ fun RepoFrom(
                 .fillMaxSize()
                 .padding(paddingValues),
             contentAlignment = Alignment.Center
-        ){
-            Column (
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(space = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
-            ){
+            ) {
                 OutlinedTextField(
-                    value = "",
-                    onValueChange = {},
-                    label = { Text("Nombre del repositorio")},
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nombre del repositorio") },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !isSaving
                 )
 
                 OutlinedTextField(
-                    value = "",
-                    onValueChange = {},
-                    label = { Text("Descripción del repositorio")},
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Descripción del repositorio") },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !isSaving
                 )
 
                 Button(
-                    onClick = {},
-                    enabled = true,
+                    onClick = {
+                        isSaving = true
+                        CoroutineScope(Dispatchers.Main).launch {
+                            try {
+                                if (repository == null) {
+                                    // Crear nuevo (POST)
+                                    RetrofitClient.apiService.createRepostory(
+                                        RepositoryPayload(name, description)
+                                    )
+                                } else {
+                                    // Actualizar existente (PATCH)
+                                    RetrofitClient.apiService.updateRepository(
+                                        owner = repository.owner.login,
+                                        repo = repository.name,
+                                        payload = RepositoryPayload(name, description)
+                                    )
+                                }
+                                onSaveSuccess()
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            } finally {
+                                isSaving = false
+                            }
+                        }
+                    },
+                    enabled = name.isNotBlank() && !isSaving,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(
-
                         imageVector = Icons.AutoMirrored.Filled.Send,
                         contentDescription = "Guardar"
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Guardar")
+                    Text(if (isSaving) "Guardando..." else "Guardar")
                 }
             }
         }
